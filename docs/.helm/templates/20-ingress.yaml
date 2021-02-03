@@ -31,7 +31,7 @@ spec:
   - host: {{ $host }}
     http:
       paths:
-{{- if or ( eq .Version "master") (eq .Version "wf-werfio3") }}
+{{- if or ( eq .Version "master") (eq .Version "werfio2") }}
       - path: /
 {{- else }}
       - path: /{{ .VersionURLNormalized }}
@@ -39,10 +39,16 @@ spec:
         backend:
           serviceName: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
           servicePort: http
+{{- if or ( eq .Version "master") (eq .Version "werfio2") }}
+      - path: /backend
+        backend:
+          serviceName: {{ .Chart.Name }}-backend
+          servicePort: http
+{{- end }}
   - host: ru.{{ $host }}
     http:
       paths:
-{{- if or ( eq .Version "master") (eq .Version "wf-werfio3") }}
+{{- if or ( eq .Version "master") (eq .Version "werfio2") }}
       - path: /
 {{- else }}
       - path: /{{ .VersionURLNormalized }}
@@ -50,6 +56,12 @@ spec:
         backend:
           serviceName: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
           servicePort: 80
+{{- if or ( eq .Version "master") (eq .Version "werfio2") }}
+      - path: /backend
+        backend:
+          serviceName: {{ .Chart.Name }}-backend
+          servicePort: http
+{{- end }}
 ---
 {{- if eq .Version "master" }}
 apiVersion: certmanager.k8s.io/v1alpha1

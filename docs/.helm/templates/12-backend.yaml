@@ -1,25 +1,24 @@
 {{- $_ := set . "Version" ( splitList "/" .Values.global.github_ref | last ) }}
-{{- $_ := set . "VersionURLNormalized" ( printf "%s" .Version | lower | replace "+" "-plus-" | replace "_" "-u-" ) }}
-{{- $_ := set . "VersionDNSNormalized" ( printf "%s" .Version | lower | replace "+" "-plus-" | replace "_" "-u-" | replace "." "-dot-" ) }}
 
+{{- if or ( eq .Version "master") (eq .Version "werfio2") }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+  name: {{ .Chart.Name }}-backend
   annotations:
     "werf.io/set-replicas-only-on-creation": "true"
   labels:
-    service: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+    service: {{ .Chart.Name }}-backend
 spec:
   minReadySeconds: 5
   revisionHistoryLimit: 5
   selector:
     matchLabels:
-      service: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+      service: {{ .Chart.Name }}-backend
   template:
     metadata:
       labels:
-        service: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+        service: {{ .Chart.Name }}-backend
     spec:
       imagePullSecrets:
         - name: github-werfio
@@ -47,11 +46,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+  name: {{ .Chart.Name }}-backend
 spec:
   clusterIP: None
   selector:
-    service: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+    service: {{ .Chart.Name }}-backend
   ports:
   - name: http
     port: 80
@@ -60,21 +59,22 @@ spec:
 apiVersion: autoscaling.k8s.io/v1beta2
 kind: VerticalPodAutoscaler
 metadata:
-  name: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+  name: {{ .Chart.Name }}-backend
 spec:
   targetRef:
     apiVersion: "apps/v1"
     kind: Deployment
-    name: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+    name: {{ .Chart.Name }}-backend
   updatePolicy:
     updateMode: "Initial"
 ---
 apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+  name: {{ .Chart.Name }}-backend
 spec:
   maxUnavailable: 1
   selector:
     matchLabels:
-      service: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
+      service: {{ .Chart.Name }}-backend
+{{- end }}

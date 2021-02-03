@@ -3,7 +3,8 @@ on:
   push:
     tags:
       - 'v*'
-    branches: [master]
+      - 'testv*'
+    branches: [master, werfio2]
 jobs:
 
   build:

@@ -1,7 +1,5 @@
 project: werfio-ng
 configVersion: 1
-deploy:
-  helmChartDir: docs/.helm
 
 ---
 artifact: asset
@@ -47,25 +45,64 @@ git:
     install: ['Gemfile','Gemfile.lock']
     beforeSetup: '**/*'
 ---
-image: ~
+image: web
 from: nginx:stable-alpine
 ansible:
   setup:
   - name: "Setup /etc/nginx/nginx.conf"
     copy:
       content: |
-{{ .Files.Get "docs/.werf/nginx.conf" | indent 8 }}
+{{ .Files.Get ".werf/nginx.conf" | indent 8 }}
       dest: /etc/nginx/nginx.conf
   - copy:
       content: |
-{{ .Files.Get "docs/.werf/robots.txt" | indent 8 }}
+{{ .Files.Get ".werf/robots.txt" | indent 8 }}
       dest: /app/main/robots.txt
   - copy:
       content: |
-{{ .Files.Get "docs/.werf/robots_ru.txt" | indent 8 }}
+{{ .Files.Get ".werf/robots_ru.txt" | indent 8 }}
       dest: /app/ru/robots.txt
 import:
 - artifact: asset
   add: /app/_site
   to: /app/
   before: setup
+---
+artifact: web-backend-artifact
+from: golang:1.15
+ansible:
+  install:
+    - name: Build apis
+      shell: |
+        go get -d -v ./
+        go build -v -o /go/src/app/server /go/src/app/main.go
+      args:
+        executable: /bin/bash
+        chdir: /go/src/app
+git:
+  - add: /docs/backend
+    to: /go/src/app
+    stageDependencies:
+      install: '**/*'
+---
+image: web-backend
+from: ubuntu:20.04
+ansible:
+  install:
+    - apt:
+        name: ['git','curl', 'jq']
+        state: present
+        update_cache: yes
+import:
+  - artifact: web-backend-artifact
+    add: /go/src/app/server
+    to: /app/server
+    before: setup
+  - artifact: asset
+    add: /app/_site
+    to: /app/root
+    before: setup
+    excludePaths:
+      - "**/documentation/"
+
+
