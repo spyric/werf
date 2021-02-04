@@ -86,6 +86,8 @@ git:
       install: '**/*'
 ---
 image: web-backend
+docker:
+  WORKDIR: /app
 from: ubuntu:20.04
 ansible:
   install:

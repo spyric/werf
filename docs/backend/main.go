@@ -69,7 +69,7 @@ func newRouter() *mux.Router {
 
 	staticFileDirectory := http.Dir("./root/")
 
-	r.PathPrefix("/ssi/").HandlerFunc(ssiHandler).Methods("GET")
+	r.PathPrefix("/backend/").HandlerFunc(ssiHandler).Methods("GET")
 	r.PathPrefix("/").Handler(http.FileServer(staticFileDirectory))
 	return r
 }
