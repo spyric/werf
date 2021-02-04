@@ -55,7 +55,7 @@ spec:
 {{- end }}
         backend:
           serviceName: {{ .Chart.Name }}-{{ .VersionDNSNormalized }}
-          servicePort: 80
+          servicePort: http
 {{- if or ( eq .Version "master") (eq .Version "werfio2") }}
       - path: /backend
         backend:
