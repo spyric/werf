@@ -52,15 +52,15 @@ ansible:
   - name: "Setup /etc/nginx/nginx.conf"
     copy:
       content: |
-{{ .Files.Get ".werf/nginx.conf" | indent 8 }}
+{{ .Files.Get "docs/.werf/nginx.conf" | indent 8 }}
       dest: /etc/nginx/nginx.conf
   - copy:
       content: |
-{{ .Files.Get ".werf/robots.txt" | indent 8 }}
+{{ .Files.Get "docs/.werf/robots.txt" | indent 8 }}
       dest: /app/main/robots.txt
   - copy:
       content: |
-{{ .Files.Get ".werf/robots_ru.txt" | indent 8 }}
+{{ .Files.Get "docs/.werf/robots_ru.txt" | indent 8 }}
       dest: /app/ru/robots.txt
 import:
 - artifact: asset
