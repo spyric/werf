@@ -395,17 +395,20 @@ func run(ctx context.Context, giterminismManager giterminism_manager.Interface) 
 	if helm2Exists, err := checkHelm2ReleaseExists(ctx, releaseName, namespace, maintenanceHelper); err != nil {
 		return fmt.Errorf("error checking existance of helm 2 release %q: %s", releaseName, err)
 	} else if helm2Exists {
-		logboek.Context(ctx).Warn().LogFDetails("Found existing helm 2 release %q\n", releaseName)
+		logboek.Context(ctx).Warn().LogFDetails("Found existing helm 2 release %q, will try to render helm 3 templates and migrate existing release resources to helm 3\n", releaseName)
 
-		helmTemplateCmd, _ := cmd_helm.NewTemplateCmd(actionConfig, ioutil.Discard, cmd_helm.TemplateCmdOptions{
-			PostRenderer: postRenderer,
-			ValueOpts:    valueOpts,
-		})
-		if err := helmTemplateCmd.RunE(helmTemplateCmd, []string{releaseName, filepath.Join(giterminismManager.ProjectDir(), chartDir)}); err != nil {
+		logboek.Context(ctx).Default().LogOptionalLn()
+		if err := logboek.Context(ctx).LogProcess("Rendering helm 3 templates for the current project state").DoError(func() error {
+			helmTemplateCmd, _ := cmd_helm.NewTemplateCmd(actionConfig, ioutil.Discard, cmd_helm.TemplateCmdOptions{
+				PostRenderer: postRenderer,
+				ValueOpts:    valueOpts,
+			})
+			return helmTemplateCmd.RunE(helmTemplateCmd, []string{releaseName, filepath.Join(giterminismManager.ProjectDir(), chartDir)})
+		}); err != nil {
 			return err
 		}
 
-		if err := logboek.Context(ctx).LogProcess("Migrating helm 2 release %q to helm 3 in the %q namespace", releaseName, namespace).DoError(func() error {
+		if err := logboek.Context(ctx).Default().LogProcess("Migrating helm 2 release %q to helm 3 in the %q namespace", releaseName, namespace).DoError(func() error {
 			if err := maintenance_helper.Migrate2To3(ctx, releaseName, releaseName, namespace, maintenanceHelper); err != nil {
 				return fmt.Errorf("error migrating existing helm 2 release %q to helm 3 release %q in the namespace %q: %s", releaseName, releaseName, namespace, err)
 			}
