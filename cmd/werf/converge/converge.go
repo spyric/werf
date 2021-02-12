@@ -3,6 +3,7 @@ package converge
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -331,10 +332,6 @@ func run(ctx context.Context, giterminismManager giterminism_manager.Interface) 
 		return err
 	}
 
-	if err := helm2ReleaseExistanceCheckGuard(ctx, releaseName, namespace, actionConfig, kubeConfigOptions); err != nil {
-		return err
-	}
-
 	userExtraAnnotations, err := common.GetUserExtraAnnotations(&commonCmdData)
 	if err != nil {
 		return err
@@ -381,19 +378,46 @@ func run(ctx context.Context, giterminismManager giterminism_manager.Interface) 
 		SubchartExtenderFactoryFunc: func() chart.ChartExtender { return chart_extender.NewWerfSubchart() },
 	}
 
+	valueOpts := &values.Options{
+		ValueFiles:   common.GetValues(&commonCmdData),
+		StringValues: common.GetSetString(&commonCmdData),
+		Values:       common.GetSet(&commonCmdData),
+		FileValues:   common.GetSetFile(&commonCmdData),
+	}
+
 	postRenderer, err := wc.GetPostRenderer()
 	if err != nil {
 		return err
 	}
 
+	maintenanceHelper := createMaintenanceHelper(ctx, actionConfig, kubeConfigOptions)
+
+	if helm2Exists, err := checkHelm2ReleaseExists(ctx, releaseName, namespace, maintenanceHelper); err != nil {
+		return fmt.Errorf("error checking existance of helm 2 release %q: %s", releaseName, err)
+	} else if helm2Exists {
+		logboek.Context(ctx).Warn().LogFDetails("Found existing helm 2 release %q\n", releaseName)
+
+		helmTemplateCmd, _ := cmd_helm.NewTemplateCmd(actionConfig, ioutil.Discard, cmd_helm.TemplateCmdOptions{
+			PostRenderer: postRenderer,
+			ValueOpts:    valueOpts,
+		})
+		if err := helmTemplateCmd.RunE(helmTemplateCmd, []string{releaseName, filepath.Join(giterminismManager.ProjectDir(), chartDir)}); err != nil {
+			return err
+		}
+
+		if err := logboek.Context(ctx).LogProcess("Migrating helm 2 release %q to helm 3 in the %q namespace", releaseName, namespace).DoError(func() error {
+			if err := maintenance_helper.Migrate2To3(ctx, releaseName, releaseName, namespace, maintenanceHelper); err != nil {
+				return fmt.Errorf("error migrating existing helm 2 release %q to helm 3 release %q in the namespace %q: %s", releaseName, releaseName, namespace, err)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+
 	helmUpgradeCmd, _ := cmd_helm.NewUpgradeCmd(actionConfig, logboek.OutStream(), cmd_helm.UpgradeCmdOptions{
-		PostRenderer: postRenderer,
-		ValueOpts: &values.Options{
-			ValueFiles:   common.GetValues(&commonCmdData),
-			StringValues: common.GetSetString(&commonCmdData),
-			Values:       common.GetSet(&commonCmdData),
-			FileValues:   common.GetSetFile(&commonCmdData),
-		},
+		PostRenderer:    postRenderer,
+		ValueOpts:       valueOpts,
 		CreateNamespace: common.NewBool(true),
 		Install:         common.NewBool(true),
 		Wait:            common.NewBool(true),
@@ -406,7 +430,7 @@ func run(ctx context.Context, giterminismManager giterminism_manager.Interface) 
 	})
 }
 
-func helm2ReleaseExistanceCheckGuard(ctx context.Context, releaseName, namespace string, actionConfig *action.Configuration, kubeConfigOptions kube.KubeConfigOptions) error {
+func createMaintenanceHelper(ctx context.Context, actionConfig *action.Configuration, kubeConfigOptions kube.KubeConfigOptions) *maintenance_helper.MaintenanceHelper {
 	maintenanceOpts := maintenance_helper.MaintenanceHelperOptions{
 		KubeConfigOptions: kubeConfigOptions,
 	}
@@ -432,32 +456,23 @@ func helm2ReleaseExistanceCheckGuard(ctx context.Context, releaseName, namespace
 		}
 	}
 
-	helmMaintenanceHelper := maintenance_helper.NewMaintenanceHelper(actionConfig, maintenanceOpts)
-	if available, err := helmMaintenanceHelper.CheckHelm2StorageAvailable(ctx); err != nil {
-		return err
+	return maintenance_helper.NewMaintenanceHelper(actionConfig, maintenanceOpts)
+}
+
+func checkHelm2ReleaseExists(ctx context.Context, releaseName, namespace string, maintenanceHelper *maintenance_helper.MaintenanceHelper) (bool, error) {
+	if available, err := maintenanceHelper.CheckHelm2StorageAvailable(ctx); err != nil {
+		return false, err
 	} else if available {
-		existingReleases, err := helmMaintenanceHelper.GetHelm2ReleasesList(ctx)
+		existingReleases, err := maintenanceHelper.GetHelm2ReleasesList(ctx)
 		if err != nil {
-			return fmt.Errorf("error getting existing helm 2 releases to perform check: %s", err)
+			return false, fmt.Errorf("error getting existing helm 2 releases: %s", err)
 		}
 		for _, existingReleaseName := range existingReleases {
 			if releaseName == existingReleaseName {
-				return fmt.Errorf(`found existing helm 2 release with the same name %q: cannot continue converge
-
-Please start a migration of your existing helm 2 release to helm 3 manually with the following command:
-
-    werf helm migrate2to3 --release %s --target-namespace %s --help
-
-### CAUTION! ###
-
- 1. There is no way back after release has been migrated to helm 3.
- 2. Check release and namespace params are set to correct values.
- 3. Check other options of the migrate2to3 command to configure non-standard settings of the helm 2 release storage if needed.
-
-`, releaseName, releaseName, namespace)
+				return true, nil
 			}
 		}
 	}
 
-	return nil
+	return false, nil
 }
